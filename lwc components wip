@@ -1,0 +1,352 @@
+html file
+<template>
+    
+    
+    <div class="row">
+       
+       
+        <template for:each={accountData} for:item="account">
+            <lightning-layout-item size="12" key={account.Id}>
+        <lightning-input type="text" label="ARCO#" value={account.CSDARCONumber__c} disabled></lightning-input>
+        <lightning-input type="text" label="SAP#" value={account.AccountNumber} disabled></lightning-input>
+        <lightning-input type="text" label="Customer Business Name" value={account.Name} disabled></lightning-input>
+        <lightning-input type="text" label="Channel of Trade" value={account.GEFUE_Branded_Direct_Channel_of_Trade__c} disabled></lightning-input>
+        </lightning-layout-item>
+        </template>
+        
+        <template if:true={accountData}>
+        
+        <lightning-input type="date" name="Default Date" label="Date of Default" value={date} onchange={handleDefaultDateChange}> </lightning-input> 
+        <lightning-input type="text" name="Default Code" label="Default Code" required onchange={handleDefaultCodeChange}> </lightning-input> 
+        <lightning-formatted-url value="https://bp365.sharepoint.com/:x:/r/sites/CF7/GBS/US/O2C/RSMASTER_SITE_LISTING/FORMS%20%20TEMPLATES/DEFAULT%20SHAREPOINT%20CODES%20AND%20DESCRIPTIONS%20FOR%20SIEBEL_01042022.xls?d=waddae350cec0440b9c20af82fa78c4f0&csf=1&web=1&e=t4h7k4" 
+                                 tooltip="Default Codes Sheet" label="Default Code Reference Sheet" target="_blank" ></lightning-formatted-url>
+
+        <lightning-textarea name="Operations Description" label="Operations Description" onchange={handleOPDescChange}></lightning-textarea>
+    
+    </template>
+    
+    <span style="position: relative;top:20px;left:65px;" >
+        <lightning-helptext content="Allowed file types ('.png','.jpg','.jpeg','.heic','.gif','.pdf','.docx','.doc','.ppt','.pptx','.xls','.xlsx') "></lightning-helptext>                                                     
+    </span>    
+    <lightning-file-upload label="Upload File" name="fileUploader"  accept={acceptedFormats}  record-id={recordId}
+        onuploadfinished={handleActionFinished} multiple>
+    </lightning-file-upload>
+
+
+    <lightning-layout multiple-rows="true">
+        <lightning-layout-item padding="around-small" size="12">
+            <lightning-layout>
+                <lightning-layout-item size="1">
+                </lightning-layout-item>
+            </lightning-layout>
+        </lightning-layout-item>
+        <template for:each={files} for:item="file">
+            <lightning-layout-item size="12" key={file.Id}>
+                <lightning-layout>
+                    <lightning-layout-item size="1">
+                        <lightning-button-icon variant="bare" icon-name="utility:delete" alternative-text="Delete"
+                            class="slds-m-left_xx-small" title="Delete" onclick={handleDelete} name="openConfirmation"
+                            data-id={file.Id}>
+                        </lightning-button-icon>
+                    </lightning-layout-item>
+                    <lightning-layout-item size="8">
+                        <lightning-button variant="base" data-id={file.Id}
+                            label={file.Title} value={file.Title} onclick={filePreview}>
+                        </lightning-button>
+                    </lightning-layout-item>
+                
+                </lightning-layout>
+            </lightning-layout-item>
+        </template>
+    </lightning-layout>
+    <div class="slds-clearfix">
+
+
+        <lightning-button class="slds-float_right" variant="brand"
+        label="Send Email"
+        title="SendEmail"
+        onclick={sendEmail} >
+      </lightning-button>
+    
+            
+        </div> 
+    </div>
+
+    
+</template>
+
+
+js  file
+
+import { LightningElement,api,wire,track } from 'lwc';
+import { refreshApex } from '@salesforce/apex';
+import { NavigationMixin } from 'lightning/navigation';
+import { deleteRecord } from 'lightning/uiRecordApi';
+import { ShowToastEvent } from 'lightning/platformShowToastEvent';
+import getRelatedFiles from '@salesforce/apex/GEFUE_RequestDefaultController.getRelatedFiles';
+import getAccountDetails from '@salesforce/apex/GEFUE_RequestDefaultController.getAccountDetails';
+import getAMPMSettingDetails from '@salesforce/apex/GEFUE_RequestDefaultController.getAMPMSettingDetails';
+import sendEmail from '@salesforce/apex/GEFUE_RequestDefaultController.sendEmail';
+
+import {
+    FlowAttributeChangeEvent,
+    FlowNavigationNextEvent,
+} from 'lightning/flowSupport';
+
+
+export default class Gefue_RequestDefault_SendEmail extends NavigationMixin(LightningElement) {
+
+
+    @api recordId;
+    @api fileId = '';
+    @api body;
+    @api subject;
+    @api toMail;
+    @api ccMail;
+    @api formats = '.pdf,.png,.jpg,.jpeg,.heic,.gif,.docx,.doc,ppt,.pptx,.xls,.xlsx';
+    @track lstAllFiles = [];
+    files = '';
+    accountData;
+    ampmData;
+    date;
+    retrievedRecordId = false;
+    @track defaultDate;
+    @track defaultCode;
+    @track opDesc;
+    uploadedfilesDocId = '';
+
+
+
+    
+    get acceptedFormats() {
+        return this.formats.split(',');
+    }
+
+    
+    renderedCallback() {
+        
+        
+        if (!this.retrievedRecordId && this.recordId) {
+            
+            this.retrievedRecordId = true; // Escape case from recursion
+            this.recordId = this.recordId;
+         
+        getAccountDetails({recordId: this.recordId})
+		.then(result => {
+			this.accountData = result;
+            console.log('accountData',this.accountData)
+            console.log('accountDataNAme',this.accountData.Name)
+            //refreshApex(this.files);
+			this.error = undefined;
+            
+		})
+		.catch(error => {
+			this.error = error;
+			this.files = undefined;
+		})
+
+
+        var today = new Date();
+        this.date=today.toISOString();
+
+        getAMPMSettingDetails({recordId: this.recordId})
+		.then(result => {
+			this.ampmData = result;
+            console.log('ampmData',this.ampmData)
+            //refreshApex(this.files);
+			this.error = undefined;
+            
+		})
+		.catch(error => {
+			this.error = error;
+			this.files = undefined;
+		})
+    
+
+    }
+}
+    
+
+    handleActionFinished(event) {
+       
+        const lstUploadedFiles = event.detail.files;
+        console.log('lstUploadedFiles ',lstUploadedFiles);
+        lstUploadedFiles.forEach(fileIterator => this.lstAllFiles.push(fileIterator.name));
+        let uploadedFilesdocumentId = '';
+        let uploadedFilesContentId;
+        //var documentId  = uploadedFile.documentId;
+        for(let i = 0; i < lstUploadedFiles.length; i++) {
+            uploadedFilesdocumentId += lstUploadedFiles[i].documentId + ',';
+            this.uploadedfilesDocId += uploadedFilesdocumentId +  this.uploadedfilesDocId;
+            
+        }
+
+       
+
+
+            console.log('uploadedFilesdocumentId',uploadedFilesdocumentId);
+        uploadedFilesContentId = this.uploadedfilesDocId .substring(0, this.uploadedfilesDocId .length - 1);
+        console.log('uploadedFilesContentId ',JSON.stringify(uploadedFilesContentId));
+        this.fileId = JSON.parse(JSON.stringify(uploadedFilesContentId));;
+        console.log('fileId1', this.fileId);
+        getRelatedFiles({ uploadedFilesContentId: JSON.stringify(uploadedFilesContentId),recordId: this.recordId})
+		.then(result => {
+			this.files = result;
+            console.log('result',this.files)
+            //refreshApex(this.files);
+			this.error = undefined;
+            console.log('fileId', this.fileId);
+            console.log('Next',this.body,this.subject,this.toMail);
+            //const attributeChangeEvent = new FlowAttributeChangeEvent('fileId', this.fileId);
+            //this.dispatchEvent(attributeChangeEvent);  
+		})
+		.catch(error => {
+			this.error = error;
+			this.files = undefined;
+		})
+    
+       
+        //refresh the list of files
+        //refreshApex(this.files);
+    }
+
+
+
+    filePreview(event) {
+        // Naviagation Service to the show preview
+        this[NavigationMixin.Navigate]({
+            type: 'standard__namedPage',
+            attributes: {
+                pageName: 'filePreview'
+            },
+            state: {
+                // assigning ContentDocumentId to show the preview of file
+                selectedRecordId: event.currentTarget.dataset.id
+            }
+        })
+    }
+
+    handleDelete(event) {
+        
+                        let contentDocumentId = event.currentTarget.dataset.id;
+                        //let condoc = "'"+ contentDocumentId + "'";
+                        console.log('contentDocumentId',contentDocumentId);
+                        deleteRecord(contentDocumentId)
+                            .then(() => {
+                                this.dispatchEvent(
+                                    new ShowToastEvent({
+                                        title: 'Success',
+                                        message: 'File deleted',
+                                        variant: 'success'
+                                    })
+                                );
+                    
+                                let updatedfiles = JSON.parse(JSON.stringify(this.files)).filter(element => element.Id !== contentDocumentId);
+                                this.files = updatedfiles;
+                               
+                               refreshApex(this.files);
+                            })
+                            .catch(error => {
+                                this.dispatchEvent(
+                                    new ShowToastEvent({
+                                        title: 'Error deleting file',
+                                        message: error.body.message,
+                                        variant: 'error'
+                                    })
+                                );
+                            });
+                    }  
+
+                    sendEmail() {
+                       
+                            console.log('this.files ', JSON.stringify(this.files));
+
+                            let uploadedFilesdocumentId = '';
+                            let uploadedFilesContentId;
+                            
+                            if (this.files.length > 0) {
+                                for(let i = 0; i < this.files.length; i++) {
+                                    uploadedFilesdocumentId += this.files[i].Id + ',';
+                                }
+                            }
+                            
+                            uploadedFilesContentId = uploadedFilesdocumentId.substring(0, uploadedFilesdocumentId.length - 1);
+
+                            console.log('uploadedFilesContentId ' , uploadedFilesContentId);
+
+                            
+
+                            console.log('this.defaultCode',this.defaultCode);
+                            if(this.defaultCode !== undefined ) {
+                           
+                             sendEmail({ uploadedFilesContentId: JSON.stringify(uploadedFilesContentId),recordId: this.recordId, defaultCode: this.defaultCode , defaultDate: this.defaultDate, opDesc: this.opDesc})
+                            .then(result => {
+                                
+                            })
+                            .catch(error => {
+                                this.error = error;
+                                this.files = undefined;
+                            })
+
+                            this.closeQuickAction();
+
+                        }
+                        }
+
+
+                        closeQuickAction() {
+                            this[NavigationMixin.Navigate]({
+                                type: "standard__recordPage",
+                                attributes: {
+                                   recordId: this.recordId,
+                                   objectApiName: "Account",
+                                   actionName: "view"
+                                }
+                             });
+                        }
+
+                        handleDefaultDateChange(event) {
+
+                          this.defaultDate = event.target.value;
+                        }
+
+                        handleDefaultCodeChange(event) {
+
+                            this.defaultCode = event.target.value;
+                          }
+
+                          handleOPDescChange(event) {
+
+                            this.opDesc = event.target.value;
+                          }
+
+
+}
+xml file
+
+<?xml version="1.0" encoding="UTF-8"?>
+<LightningComponentBundle xmlns="http://soap.sforce.com/2006/04/metadata">
+    <apiVersion>52.0</apiVersion>
+    <isExposed>true</isExposed>
+    <targets>
+        <target>lightning__RecordPage</target>
+        <target>lightning__FlowScreen</target>
+        <target>lightning__RecordAction</target>
+    </targets>
+    <targetConfigs>
+
+          <targetConfig targets="lightning__RecordAction">
+
+            <actionType>ScreenAction</actionType>
+            </targetConfig>
+
+             <targetConfig targets="lightning__FlowScreen">
+        <property name="recordId" type="String" label="Record Id" description="Input Record Id as a string or use variable {!recordId}"/>
+    </targetConfig>
+
+    </targetConfigs>
+
+    
+   
+</LightningComponentBundle>
+
