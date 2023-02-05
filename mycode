@@ -1,7 +1,547 @@
-echo "# placement" >> README.md
-git init
-git add README.md
-git commit -m "first commit"
-git branch -M master
-git remote add origin https://github.com/durke/placement.git
-git push -u origin master
+1st company code
+/*****************************************************************************************
+*   Date:           02 January 2022
+*   Author:       Vivek Charak – TCS (Tata Consultancy Services Ltd.)
+*   Description:   Used to send site visit report through email
+*   Modifications:  
+Date :    Author:    User story:
+****************************************************************************************/
+
+
+public with sharing class GEFUE_SiteVisitReportSendEmail {
+
+     @InvocableMethod(label='Send Site Visit Report' description='Used to Send Site Visit Report of Open Issues through Email') 
+    
+      public static void getAccountSiteVisitIssues(List<ID> ids) {
+      
+        String sObjName = ids[0].getSObjectType().getDescribe().getName();
+        String searchId;  
+        System.debug('sObjName '+sObjName);
+        List<GEFUE_Site_Visit_Report__c> bpSiteVisitReportList = new List<GEFUE_Site_Visit_Report__c>();
+        List<GEFUE_Site_Visit_Report__c> operatorSiteVisitReportList = new List<GEFUE_Site_Visit_Report__c>();
+        List<GEFUE_Site_Visit_Report__c> siteVisitReportList = new List<GEFUE_Site_Visit_Report__c>();
+          
+        List<Account> accountList; 
+        if(sObjName.equalsIgnoreCase('Account')) {
+        	bpSiteVisitReportList = [select Name, GEFUE_Agreed_Action__c,GEFUE_Internal_Comments__c,createdDate,GEFUE_Summary_Comments__c,(SELECT Id, Name,GEFUE_Owned_By__c, GEFUE_Recommended_Action__c,GEFUE_Issue__c,CreatedDate FROM Site_Visit_Issues__r where GEFUE_Status__c = 'Open' And GEFUE_Owned_By__c = 'BP') from GEFUE_Site_Visit_Report__c where GEFUE_Account__c IN : ids]; 
+        	operatorSiteVisitReportList = [select Name, GEFUE_Agreed_Action__c,GEFUE_Internal_Comments__c,createdDate,GEFUE_Summary_Comments__c,(SELECT Id, Name,GEFUE_Owned_By__c,GEFUE_Recommended_Action__c ,GEFUE_Issue__c,CreatedDate FROM Site_Visit_Issues__r where GEFUE_Status__c = 'Open' And GEFUE_Owned_By__c = 'Operator') from GEFUE_Site_Visit_Report__c where GEFUE_Account__c IN :ids];
+            accountList = [select Name,Site,CSDARCONumber__c, Owner.Name,Owner.Email from Account where id IN :ids Limit 1];
+        } else if (sObjName.equalsIgnoreCase('GEFUE_Site_Visit_Report__c')) {
+            bpSiteVisitReportList = [select Name, GEFUE_Account__c, GEFUE_Agreed_Action__c,GEFUE_Internal_Comments__c,createdDate,GEFUE_Summary_Comments__c,(SELECT Id, Name,GEFUE_Owned_By__c, GEFUE_Recommended_Action__c,GEFUE_Issue__c,CreatedDate FROM Site_Visit_Issues__r where GEFUE_Status__c = 'Open' And GEFUE_Owned_By__c = 'BP') from GEFUE_Site_Visit_Report__c where Id IN : ids]; 
+            operatorSiteVisitReportList = [select Name, GEFUE_Account__c, GEFUE_Agreed_Action__c,GEFUE_Internal_Comments__c,createdDate,GEFUE_Summary_Comments__c,(SELECT Id, Name,GEFUE_Owned_By__c,GEFUE_Recommended_Action__c ,GEFUE_Issue__c,CreatedDate FROM Site_Visit_Issues__r where GEFUE_Status__c = 'Open' And GEFUE_Owned_By__c = 'Operator') from GEFUE_Site_Visit_Report__c where Id IN :ids];
+            
+            siteVisitReportList = [select Name, GEFUE_Account__c, GEFUE_Agreed_Action__c,GEFUE_Internal_Comments__c,createdDate,GEFUE_Summary_Comments__c,(SELECT Id, Name,GEFUE_Owned_By__c,GEFUE_Recommended_Action__c ,GEFUE_Issue__c,CreatedDate FROM Site_Visit_Issues__r where GEFUE_Status__c = 'Open') from GEFUE_Site_Visit_Report__c where Id IN :ids];
+            
+            String accId = bpSiteVisitReportList[0].GEFUE_Account__c ==null ? operatorSiteVisitReportList[0].GEFUE_Account__c :bpSiteVisitReportList[0].GEFUE_Account__c ;
+            accountList = [select Name,Site,CSDARCONumber__c,Owner.Name,Owner.Email from Account where id =:accId];
+          }
+          
+        createEmailandSend(accountList[0],operatorSiteVisitReportList,bpSiteVisitReportList,siteVisitReportList,sObjName);
+         
+      }
+    
+    public static Messaging.SingleEmailMessage createEmailandSend(Account acc, List<GEFUE_Site_Visit_Report__c> operatorSiteVisitReportList,List<GEFUE_Site_Visit_Report__c> bpSiteVisitReportList,List<GEFUE_Site_Visit_Report__c> siteVisitReportList,String sObjName) {
+
+        String mailBody;
+        String arcoNumber = acc.CSDARCONumber__c == null ? '':acc.CSDARCONumber__c;
+        
+        if(sObjName.equalsIgnoreCase('GEFUE_Site_Visit_Report__c')) {
+        
+       		 mailBody = 'I visited your site ' + '<b>' + acc.Name + '</b>' + ' on ' + bpSiteVisitReportList[0].createdDate.format('MMMM d, yyyy') + 
+                    ' and we discussed the following concerns and or issues that need to be addressed or are still unresolved from prior site visits. Please take actions to resolve these matters.<br/>';
+        } else {
+               mailBody = 'I visited your site ' + '<b>' + acc.Name + '</b>' + ' on ' + System.now().format('MMMM d, yyyy') + 
+                    ' and we discussed the following concerns and or issues that need to be addressed or are still unresolved from prior site visits. Please take actions to resolve these matters.<br/>';
+          }
+        
+        
+        if(operatorSiteVisitReportList.size() == 0) {
+            mailBody = mailBody + '<br/>' + '<b>Issues/Concerns owned by the Operator :</b> <br/> ';
+            mailBody += 'No Site Visit Report';
+        }   
+        
+        for( GEFUE_Site_Visit_Report__c opSVR : operatorSiteVisitReportList) {
+            
+            if(opSVR.Site_Visit_Issues__r.size() > 0) {
+                
+               mailBody = mailBody + '<br/>' + '<b>Issues/Concerns owned by the Operator :</b> <br/> ';
+               break;
+            } 
+        }
+        
+        for( GEFUE_Site_Visit_Report__c opSVR : operatorSiteVisitReportList) {
+            
+            if(opSVR.Site_Visit_Issues__r.size() > 0) {
+                
+               //mailBody = mailBody + '<br/>' + '<b>Issues/Concerns owned by the Operator :</b> <br/> <br/>'; 
+               String summaryComment = opSVR.GEFUE_Summary_Comments__c ==null ? '':opSVR.GEFUE_Summary_Comments__c;
+               mailBody = mailBody + '<br/>Site Visit Report: ' +  opSVR.Name + '<br/>' + 'Summary Comments: ' + summaryComment + '<br/>';
+               mailBody = mailBody + '<table border="1" style="border-collapse: collapse"> <tr><td><b>Found Date</b></td> <td><b>Description</b></td> <td><b>Agreed Action</b></td> <td><b>Owned By</b></td> </tr>' ;
+               for(GEFUE_Site_Visit_Issue__c opSVI : opSVR.Site_Visit_Issues__r) {
+                    String issue = opSVI.GEFUE_Issue__c ==null ? '':opSVI.GEFUE_Issue__c;
+                    String agreedAction = opSVI.GEFUE_Recommended_Action__c ==null ? '':opSVI.GEFUE_Recommended_Action__c;
+                    mailBody += '<tr><td>' + opSVI.CreatedDate.format('MMMM d, yyyy') + '</td><td>' + issue + '</td><td>' + agreedAction + '</td><td>' + opSVI.GEFUE_Owned_By__c +'</td></tr>';
+               } 
+               mailBody += '</table>';
+
+            }
+    
+       }
+                                               
+      
+       if(bpSiteVisitReportList.size() == 0) {
+          mailBody = mailBody + '<br/><br/>' + '<b>Issues/Concerns owned by the BP :</b> <br/> '; 
+          mailBody += 'No Site Visit Report';
+       }  
+        
+       for( GEFUE_Site_Visit_Report__c bpSVR : bpSiteVisitReportList) {
+            
+            if(bpSVR.Site_Visit_Issues__r.size() > 0) {
+               
+               mailBody = mailBody + '<br/><br/>' + '<b>Issues/Concerns owned by the BP :</b> <br/>';
+               break;
+            }
+       }
+        
+       for( GEFUE_Site_Visit_Report__c bpSVR : bpSiteVisitReportList) {
+            
+            if(bpSVR.Site_Visit_Issues__r.size() > 0) {
+               
+               //mailBody = mailBody + '<br/><br/>' + '<b>Issues/Concerns owned by the BP :</b> <br/> <br/>'; 
+               String summaryComment = bpSVR.GEFUE_Summary_Comments__c ==null ? '':bpSVR.GEFUE_Summary_Comments__c;
+               mailBody = mailBody + '<br/>Site Visit Report: ' +  bpSVR.Name + '<br/>' + 'Summary Comments: ' + summaryComment + '<br/>';
+               mailBody = mailBody + '<table border="1" style="border-collapse: collapse"> <tr><td><b>Found Date</b></td> <td><b>Description</b></td> <td><b>Agreed Action</b></td> <td><b>Owned By</b></td> </tr>' ;
+            
+               for(GEFUE_Site_Visit_Issue__c bpSVI : bpSVR.Site_Visit_Issues__r) {
+                     String issue = bpSVI.GEFUE_Issue__c ==null ? '':bpSVI.GEFUE_Issue__c;
+                     String agreedAction = bpSVI.GEFUE_Recommended_Action__c ==null ? '':bpSVI.GEFUE_Recommended_Action__c;
+                     mailBody += '<tr><td>' + bpSVI.CreatedDate.format('MMMM d, yyyy') + '</td><td>' + issue + '</td><td>' + agreedAction + '</td><td>' + bpSVI.GEFUE_Owned_By__c +'</td></tr>';
+               } 
+               mailBody += '</table>';
+
+            }
+    
+       }
+                                                 
+       mailBody +=  '<br/><br/>Thank you,<br/>'+ acc.Owner.Name;       
+        
+       for( GEFUE_Site_Visit_Report__c svr : siteVisitReportList) {
+            
+            if(svr.Site_Visit_Issues__r.size() == 0) {
+                
+               mailBody = '';
+               String summaryComment = svr.GEFUE_Summary_Comments__c ==null ? '': svr.GEFUE_Summary_Comments__c;
+               mailBody = mailBody + 'I visited your site ' + '<b>' + acc.Name + '</b>' + ' on ' +  siteVisitReportList[0].createdDate.format('MMMM d, yyyy') + ' and would like to thank you for being a bp customer! I appreciate you and all you do.<br/>';
+               mailBody = mailBody + '<br/><b>Site Visit Report: </b>' +  svr.Name + '<br/>'  + '<b>Summary Comments:</b> ' + summaryComment + '<br/>';
+            } 
+        }  
+        
+       List<Messaging.SingleEmailMessage> mailList = new List<Messaging.SingleEmailMessage>();
+       List<String> accOwnerEmail = new list<String>();
+       List<String> conEmailsList = new List<String>();
+       List<String> recepientsEmailsList = new List<String>();
+       for(Contact con : [select Id,Email from Contact where AccountId =: acc.Id] ) {
+           if(!String.isBlank(con.Email)) 
+           	  conEmailsList.add(con.Email) ;
+       }                                       
+       accOwnerEmail.add(acc.Owner.Email);
+       recepientsEmailsList.addAll(accOwnerEmail); 
+       recepientsEmailsList.addAll(conEmailsList); 
+       System.debug('recepientsEmailsList '+recepientsEmailsList); 
+       String emailSubject = 'Site Visit Report '+ arcoNumber; 
+      
+       try{
+           
+           //Messaging.SingleEmailMessage emailtoAccOwner = GEFUE_Utility.sendEmail(mailBody,null,accOwnerEmail,emailSubject,null);
+           //mailList.add(emailtoAccOwner);
+           
+           Messaging.SingleEmailMessage svrEmail = GEFUE_Utility.sendEmail(mailBody,null,recepientsEmailsList,emailSubject,null);
+           mailList.add(svrEmail);
+           Messaging.sendEmail(mailList,false);
+           return svrEmail;                   
+       }catch (Exception ex) {
+             System.debug(ex.getMessage());
+             return null;
+        }
+        
+                                               
+   }
+    
+}
+
+
+
+/*****************************************************************************************
+*   Date:           02 January 2022
+*   Author:       Vivek Charak – TCS (Tata Consultancy Services Ltd.)
+*   Description:   Used to send site visit report through email
+*   Modifications:  
+Date :    Author:    User story:
+****************************************************************************************/
+
+@isTest(SeeAllData=False)
+public with sharing class GEFUE_SiteVisitReportSendEmailTest {
+
+     @isTest static void TestSendSVREmail() {
+         
+        profile p = [SELECT Id FROM Profile WHERE Name='BP Base (Salesforce)'];
+        User u2 = new User(Alias = 'newUser', Email='newuser@testorg.com',
+                           EmailEncodingKey='UTF-8', LastName='Testing', LanguageLocaleKey='en_US',
+                           LocaleSidKey='en_US', ProfileId = p.Id,
+                           TimeZoneSidKey='America/Los_Angeles', UserName='newuser@testorg1.com');
+        insert u2;
+        PermissionSet ps = [SELECT Id FROM PermissionSet WHERE Name = 'GEFUE_Execute_Survey_Defaults_and_SVR_SVI']; 
+        PermissionSetAssignment psa = new PermissionSetAssignment();
+        psa.AssigneeId = u2.Id;
+        psa.PermissionSetId = ps.Id;
+        insert psa;
+        
+        PermissionSet   ps1 =[SELECT Id FROM PermissionSet WHERE Name = 'GEFUE_WC_Field_Ops_Read_Only'];
+        PermissionSetAssignment psa1 = new PermissionSetAssignment();
+        psa1.AssigneeId = u2.Id;
+        psa1.PermissionSetId = ps1.Id;
+        insert psa1;
+        
+        PermissionSet ps2 =[SELECT Id FROM PermissionSet WHERE Name = 'GEFUE_WC_Ops_Support_Create_Edit'];
+        PermissionSetAssignment psa2 = new PermissionSetAssignment();
+        psa2.AssigneeId = u2.Id;
+        psa2.PermissionSetId = ps2.Id;
+        insert psa2;
+        
+        System.runAs(u2)
+        {
+         
+         Test.startTest();
+         
+         Account acc= new Account(Site = '123456', Name = 'Test Acc', CSDARCONumber__c = '1234567');
+         insert acc;
+         
+         GEFUE_Site_Visit_Report__c	svr = new GEFUE_Site_Visit_Report__c(GEFUE_Account__c = acc.Id, GEFUE_Agreed_Action__c = 'Agreed Action SVR',
+                                                                         GEFUE_Internal_Comments__c = 'Internal Comments SVR', createdDate =System.now());
+         
+         insert svr;
+         
+         GEFUE_Site_Visit_Issue__c sviBP = new GEFUE_Site_Visit_Issue__c(GEFUE_Account__c = acc.Id, GEFUE_Recommended_Action__c = 'Recommended Action SVI', GEFUE_Owned_By__c = 'BP',
+                                                                        GEFUE_Issue__c = 'Issue SVI', GEFUE_Status__c = 'Open', GEFUE_Site_Visit_Report__c = svr.Id);
+
+         GEFUE_Site_Visit_Issue__c sviOP = new GEFUE_Site_Visit_Issue__c(GEFUE_Account__c = acc.Id, GEFUE_Recommended_Action__c = 'Recommended Action SVI OP', GEFUE_Owned_By__c = 'Operator',
+                                                                        GEFUE_Issue__c = 'Issue SVI OP', GEFUE_Status__c = 'Open', GEFUE_Site_Visit_Report__c = svr.Id);
+            
+         insert sviBP;
+         insert sviOP;   
+         
+         List<GEFUE_Site_Visit_Report__c> bpSiteVisitReportList = new List<GEFUE_Site_Visit_Report__c>();
+         List<GEFUE_Site_Visit_Report__c> opSiteVisitReportList = new List<GEFUE_Site_Visit_Report__c>();
+         List<GEFUE_Site_Visit_Report__c> siteVisitReportList = new List<GEFUE_Site_Visit_Report__c>();
+         
+         bpSiteVisitReportList = [select Name, GEFUE_Agreed_Action__c,GEFUE_Internal_Comments__c,createdDate,GEFUE_Summary_Comments__c,(SELECT Id, Name,GEFUE_Owned_By__c, GEFUE_Recommended_Action__c,GEFUE_Issue__c,CreatedDate FROM Site_Visit_Issues__r where GEFUE_Status__c = 'Open' And GEFUE_Owned_By__c = 'BP') from GEFUE_Site_Visit_Report__c where GEFUE_Account__c =: acc.Id]; 
+         opSiteVisitReportList = [select Name, GEFUE_Agreed_Action__c,GEFUE_Internal_Comments__c,createdDate,GEFUE_Summary_Comments__c,(SELECT Id, Name,GEFUE_Owned_By__c, GEFUE_Recommended_Action__c,GEFUE_Issue__c,CreatedDate FROM Site_Visit_Issues__r where GEFUE_Status__c = 'Open' And GEFUE_Owned_By__c = 'Operator') from GEFUE_Site_Visit_Report__c where GEFUE_Account__c =: acc.Id];    
+         
+         Messaging.SingleEmailMessage email2 = GEFUE_SiteVisitReportSendEmail.createEmailandSend(acc, opSiteVisitReportList, bpSiteVisitReportList, siteVisitReportList, 'GEFUE_Site_Visit_Report__c');
+         
+         System.assertEquals('Site Visit Report 1234567', email2.getSubject());
+         System.assertEquals(true, email2.getHtmlBody().contains(acc.Name));
+         
+         GEFUE_SiteVisitReportSendEmail.getAccountSiteVisitIssues(new List<ID>{acc.Id});
+         GEFUE_SiteVisitReportSendEmail.getAccountSiteVisitIssues(new List<ID>{svr.Id});
+         System.assertEquals('Test Acc', acc.Name);
+            
+         Test.stopTest();
+        }
+         
+     }
+}
+
+
+wrapper class code
+global with sharing class ASA_CommitFormSubmission {
+    global class formWrapper{
+        @InvocableVariable
+        Public Id oppId;
+        @InvocableVariable
+        Public List<GEFUE_Commercial_Opportunity_Product__c> oppProduct;
+        @InvocableVariable
+        Public List<GEFUE_Terminal__c> terminals;
+        @InvocableVariable
+        Public List<Account> shipToAccounts;
+        @InvocableVariable
+        Public  String TMName;
+        @InvocableVariable
+        Public  date Todaysdate;
+        @InvocableVariable
+        Public  String accountname;
+        @InvocableVariable
+        Public  String SoldTo;
+        @InvocableVariable
+        Public  String Segment;
+        @InvocableVariable
+        Public  String Channel;
+        @InvocableVariable
+        Public  date startdate;
+        @InvocableVariable
+        Public  date endDate;
+        @InvocableVariable
+        Public  String Quote_Type;
+        @InvocableVariable
+        Public  String Status;
+        @InvocableVariable
+        Public  String mode;
+        @InvocableVariable
+        Public  Integer Truck_Tons;
+        @InvocableVariable
+        Public  Integer Rail_Tons;
+        @InvocableVariable
+        Public  Integer Rail_car_fee;
+        @InvocableVariable
+        Public  Integer Barge_fee;
+        @InvocableVariable
+        Public  Integer Rail_cars;
+        @InvocableVariable
+        Public  Integer Volume_discount;
+        @InvocableVariable
+        Public  Integer Barge_Tons;
+        @InvocableVariable
+        Public  Integer Barges;
+        @InvocableVariable
+        Public  String oppName;
+        /*@InvocableVariable
+        Public  String Primary_Terminal_Number;
+        @InvocableVariable
+        Public  String Secondary_Terminal_Number;
+        @InvocableVariable
+        Public  String PrimaryTerminal;
+        @InvocableVariable
+        Public  String SecondaryTerminal;*/
+        @InvocableVariable
+        Public  String Comments;
+        @InvocableVariable
+        Public  String purchaseOrder;
+     }
+    global class productWrapper{
+        @InvocableVariable
+        Public  String Pave_poly;
+        @InvocableVariable
+        Public  Integer Q_Price;
+        @InvocableVariable
+        Public  String Terminal;
+        @InvocableVariable
+        Public  String Product_Name;
+        @InvocableVariable
+        Public  String Product_Code;
+        @InvocableVariable
+        Public  Integer index;
+        
+     }
+    @InvocableMethod
+    global static void sendData(formWrapper[] formWrapper){
+        
+        Map<String,ASA_Asphalt_Setting__mdt> settingMap = ASA_Asphalt_Setting__mdt.getAll();
+        
+        system.debug(' <<< '+formWrapper[0].OppProduct);
+        ContentVersion fileToUpload = new ContentVersion();
+        fileToUpload.ContentLocation = 'S';
+        fileToUpload.pathOnClient =formWrapper[0].oppName+'.pdf';
+        fileToUpload.title = 'Commit Form - '+formWrapper[0].oppName;
+        String TMName = formWrapper[0].TMName ==null ? '':formWrapper[0].TMName;
+        String AccountName = formWrapper[0].accountname ==null ? '':formWrapper[0].accountname;
+        String body = '<HTML>';
+        string td = '<TD style='+'\'border: 1px solid #dddddd;\'';
+        //body=body+'<head><style>table {font-family: arial, sans-serif;border-collapse: collapse;width: 100%;}td, th {border: 1px solid #dddddd;text-align: left;padding: 8px;}</style></head>';
+
+		body=body+'<BODY><TABLE><TR>'+td+'><b>TM</b></TD>'+td+'>'+TMName+'</TD>';
+        body=body+td+'><b>Date</b></TD>'+td+'>'+formWrapper[0].Todaysdate+'</TD></TR>';
+        
+        body=body+'<TR>'+td+'><b>CUSTOMER</b></TD>'+td+'>'+AccountName+'</TD></TR>';
+        
+        body=body+'<TR>'+td+'><b>SOLD TO</b></TD>'+td+'>'+formWrapper[0].SoldTo+'</TD>';
+        body=body+'<TD><b>Channel</b></TD><TD>'+formWrapper[0].channel+'</TD></TR>';
+        
+        body=body+'<TR><TD><b>Contract Start Date</b></TD><TD>'+formWrapper[0].startdate+'</TD>';
+        body=body+'<TD><b>Mode</b></TD><TD>'+formWrapper[0].mode.remove('ESA_').remove('ASA_')+'</TD></TR>';
+        
+        body = body+'<TR><TD><b>Contract End Date</b></TD><TD>'+formWrapper[0].endDate+'</TD>';
+        if(formWrapper[0].mode == 'ASA_Truck'){
+            body = body+'<TD><b>Truck Tons</b></TD><TD>'+formWrapper[0].Truck_Tons+'</TD></TR>';
+        }
+        if(formWrapper[0].mode == 'ESA_Barge'){
+            
+            body = body+'<TR><TD><B>Barge Tons</B><TD>'+formWrapper[0].Barge_Tons+'</TD></TR>';
+            body = body+'<TR><TD><B>BARGE FREIGHT $/ton</B><TD>'+formWrapper[0].Barge_fee+'</TD></TR>';
+            body = body+'<TR><TD><B>No of Barge</B><TD>'+formWrapper[0].Barges+'</TD></TR>';
+        }
+        if(formWrapper[0].mode == 'ESA_Rail'){
+            body = body+'<TR><TD><B>Rail Tons</B><TD>'+formWrapper[0].Rail_Tons+'</TD></TR>';
+            body = body+'<TR><TD><B>Rail Cars</B><TD>'+formWrapper[0].Rail_Cars+'</TD></TR>';
+            body = body+'<TR><TD><B>Rail Car Fee</B><TD>'+formWrapper[0].Rail_car_fee+'</TD></TR>';
+        }
+        body = body+'<TR><TD><B>Quote Type</B><TD>'+formWrapper[0].Quote_type+'</TD></TR>';
+        
+        body = body+'<TR><TD><B>Status</B><TD>'+formWrapper[0].Status+'</TD>';
+        body = body+'<TD><B>Volume Discount Per Ton</B><TD>'+formWrapper[0].Volume_discount+'</TD></TR>';
+        
+        body = body+'<TR><TD><B>Purchase Order #</B><TD>'+formWrapper[0].purchaseOrder+'</TD></TR></TABLE>';
+        
+        
+        /*String body = 'TM,'+TMName+','+',';
+        body = body + 'Date,'+formWrapper[0].Todaysdate+','+'\n';
+        
+        body = body +'CUSTOMER,'+AccountName+','+',';
+        body = body + 'Segment,'+formWrapper[0].segment+','+'\n';
+        
+        body = body +'Sold To,'+formWrapper[0].SoldTo+','+',';
+        body = body +'Channel,'+formWrapper[0].channel+','+'\n';
+        
+        body = body + 'Contract Start Date,'+formWrapper[0].startdate+','+',';
+        body = body + 'Mode,'+formWrapper[0].mode.remove('ESA_').remove('ASA_')+','+'\n';
+        
+        body = body+'Contract End Date,'+formWrapper[0].endDate+','+',';
+        if(formWrapper[0].mode == 'ASA_Truck'){
+            body = body+'Truck Tons,'+formWrapper[0].Truck_Tons+','+'\n';
+        }
+        if(formWrapper[0].mode == 'ESA_Barge'){
+            body = body+'Barge Tons,'+formWrapper[0].Barge_Tons+','+'\n';
+            body = body+' BARGE FREIGHT $/ton,'+formWrapper[0].Barge_fee+','+'\n';
+            body = body+'No of Barge,'+formWrapper[0].Barges+','+'\n';
+        }
+        if(formWrapper[0].mode == 'ESA_Rail'){
+            body = body+'Rail Tons,'+formWrapper[0].Rail_Tons+','+'\n';
+            body = body+','+','+','+'Rail Cars,'+formWrapper[0].Rail_Cars+','+'\n';
+            body = body+','+','+','+'Rail Car Fee,'+formWrapper[0].Rail_car_fee+','+'\n';
+        }
+        body = body+'Quote Type,'+formWrapper[0].Quote_type+','+'\n';
+        
+        body = body+'Status,'+formWrapper[0].Status+','+',';
+        body = body+'Volume Discount Per Ton,'+formWrapper[0].Volume_discount+','+'\n';
+        
+        body = body+'Purchase Order #,'+formWrapper[0].purchaseOrder+','+'\n\n';
+		
+		body = body+'Terminal Name,Terminal Number,Primary'+'\n';*/
+        body=body+'<BR><BR><H3>Terminal Detail</H3><br>';
+        body = body+'<TABLE>';
+        body=body+'<TR><b>'+td+'>Terminal Name</TD>'+td+'>Terminal Number</TD>'+td+'>Primary</TD></b></TR>';
+        for(GEFUE_Terminal__c terminal : formWrapper[0].terminals){
+                        
+            body=body+'<TR><TD>'+terminal.Name+'</TD><TD>'+terminal.GEFUE_Terminal_Number__c+'</TD><TD>'+terminal.GEFUE_Primary__c+'</TD></TR>';
+           // body = body+terminal.Name+','+terminal.GEFUE_Terminal_Number__c+','+
+           // terminal.GEFUE_Primary__c+'\n';
+        }
+        body=body+'</TABLE>';
+        
+        body = body+'<br><br><H3>Product Detail</H3><br><TABLE>';
+        body=body+'<TR><b><TD>Product</TD><TD>Product Code</TD><TD>Pave/Poly</TD><TD>Q Price</TD><TD>Terminal Number</TD></b></TR>';
+        
+        for(GEFUE_Commercial_Opportunity_Product__c oppProd : formWrapper[0].oppProduct){
+            body = body+'<TR><TD>'+oppProd.ASA_Product_Name__c+'</TD><TD>'+oppProd.ASA_Product_Code__c+'</TD><TD>'+
+            oppProd.ASA_Product_Type__c+'</TD><TD>'+oppProd.ASA_Q_Price__c+'</TD><TD>'+oppProd.ASA_Terminal_Number__c+'</TD></TR>';
+        }
+        body=body+'</TABLE>';
+        
+        body = body+'<br><br><H3>Ship To Detail</H3><br><TABLE>';
+        body = body+'<TR><b><TD>Customer Name</TD><TD>Account Type</TD><TD>SAP Account #</TD><TD>City</TD><TD>State</TD></b></TR>';
+        for(Account acc : formWrapper[0].shipToAccounts){
+            body = body+'<TR><TD>'+acc.Name+'</TD><TD>'+acc.Type+'</TD><TD>'+
+            acc.AccountNumber+'</TD><TD>'+acc.ShippingCity+'</TD><TD>'+acc.ShippingState+'</TD></TR>';
+        }
+        body=body+'</TABLE>';
+        
+        body = body+'<br><br><h3>Comments</h3><br>'+formWrapper[0].comments;
+        
+        /*body = body+'\n'+'Product,Product Code,Pave/Poly,Q Price,Terminal Number'+'\n';
+        for(GEFUE_Commercial_Opportunity_Product__c oppProd : formWrapper[0].oppProduct){
+            body = body+oppProd.ASA_Product_Name__c+','+oppProd.ASA_Product_Code__c+','+
+            oppProd.ASA_Product_Type__c+','+oppProd.ASA_Q_Price__c+','+oppProd.ASA_Terminal_Number__c+'\n';
+        }
+        body = body+'\n\n'+'Comments'+'\n'+'"\""'+formWrapper[0].comments+'"\""'+'\n';
+        
+        body = body+'\n'+'Customer Name,Account Type,SAP Account #,City,State'+'\n';
+        for(Account acc : formWrapper[0].shipToAccounts){
+            body = body+acc.Name+','+acc.Type+','+
+            acc.AccountNumber+','+acc.ShippingCity+','+acc.ShippingState+'\n';
+        }*/
+        
+        body = body+'</BODY></HTML>';
+        String file = body;
+        //fileToUpload.versionData = Blob.valueOf(body);
+        fileToUpload.versionData = Blob.toPdf(body);
+        Database.SaveResult saveResult;
+        try {
+            saveResult = Database.insert(fileToUpload);
+        } catch (DmlException DMLE) {
+            system.debug(
+                'Failed to insert fileToUpload, error is: ' + dmle.getMessage()
+            );
+        }
+
+        // Create a ContentDocument Link Record
+        // First get the content document Id from ContentVersion
+        Id contentDocumentId = [SELECT ContentDocumentId FROM ContentVersion WHERE Id =:fileToUpload.Id].ContentDocumentId;
+        
+        //Create ContentDocumentLink
+        ContentDocumentLink linkToRecord = new ContentDocumentLink();
+        linkToRecord.ContentDocumentId = contentDocumentId;
+        linkToRecord.LinkedEntityId =formWrapper[0].oppId ;//pass opp id
+        linkToRecord.ShareType = 'V';
+        insert linkToRecord;
+        
+        Messaging.SingleEmailMessage mail= new Messaging.SingleEmailMessage();    
+        
+        //defining list of email attachments
+        List< Messaging.EmailFileAttachment> attach= new list< Messaging.EmailFileAttachment>();
+        Messaging.EmailFileAttachment efa = new Messaging.EmailFileAttachment();
+        efa.setFileName(fileToUpload.title+'.'+'pdf');
+        efa.setBody(fileToUpload.VersionData);
+        attach.add(efa);
+        List<String> lstEmails = new List<String>{settingMap.get('MasterDataDL2').Value__C,settingMap.get('MasterDataDL').Value__C};
+        mail.setToAddresses(lstEmails);
+        mail.setPlainTextBody(settingMap.get('Email_Message').Asphalt_Email_Body__c.replace('<>',AccountName)+'\n'+TMName);//or email template
+       // mail.setHtmlBody(file);
+        //Email subject
+        mail.setSubject('Contract Submission_'+formWrapper[0].accountname);
+        mail.setFileAttachments(attach); 
+        //Send Email
+        Messaging.sendEmail(new Messaging.SingleEmailMessage[]{mail});
+    }
+}
+
+
+package.xml
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Package xmlns="http://soap.sforce.com/2006/04/metadata">
+    <types>
+        <members>*</members>
+        <name>ApexClass</name>
+    </types>
+    <types>
+        <members>*</members>
+        <name>ApexComponent</name>
+    </types>
+    <types>
+        <members>*</members>
+        <name>ApexPage</name>
+    </types>
+    <types>
+        <members>*</members>
+        <name>ApexTestSuite</name>
+    </types>
+    <types>
+        <members>*</members>
+        <name>ApexTrigger</name>
+    </types>
+    <types>
+        <members>*</members>
+        <name>AuraDefinitionBundle</name>
+    </types>
+    <types>
+        <members>*</members>
+        <name>LightningComponentBundle</name>
+    </types>
+    <types>
+        <members>*</members>
+        <name>StaticResource</name>
+    </types>
+     <types>
+        <members>*</members>
+        <name>GEFUE_WorkPlanQuestion__c.GEFUE_Workplan_MSCO_to_M_C_NA_WC_Sales_Ops_Support_sharing_rule</name>
+    </types>
+    <version>52.0</version>
+</Package>
